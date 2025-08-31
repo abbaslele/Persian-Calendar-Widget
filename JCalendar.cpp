@@ -68,16 +68,26 @@ JCalendar::JCalendar(QWidget *i_parent) :
     m_currentDate.Year = 0;
     m_currentDate.Month = 0;
     m_currentDate.Day = 0;
+
+    m_startDate = m_currentDate;
+    m_endDate = m_currentDate;
+
     setDate( today() );
     m_ui->TextDate->selectAll();
     m_ui->TextDate->setFocus();
+
+    // Set default to single day selection
+    m_ui->uSelectDay_RadioButton->setChecked(true);
+    mRangeSelectionMode = false;
 
     // راست چین کردن combobox ماه ها
     for (int i = 0; i < m_ui->moon->count(); ++i) {
         m_ui->moon->setItemData( i , Qt::AlignRight, Qt::TextAlignmentRole);
     }
 
- QString moonStyle="QComboBox{"
+ QString moonStyle=
+        {
+        "QComboBox{"
      "background-color: #434343;"
  "color : #F4F0EE;"
  "padding: 3px;"
@@ -123,7 +133,7 @@ JCalendar::JCalendar(QWidget *i_parent) :
     "border-radius : 4px;"
     "selection-background-color: #3F3F3F;"
 "outline: 0;"
-"}";
+"}"};
 
     // m_ui->moon->setStyleSheet("QComboBox {"
     //                           "  padding-left: 10px;"
@@ -517,29 +527,79 @@ QString JCalendar::toPersianNumbers(const QString &input) // تبدیل اعدا
     return result;
 }
 
-void JCalendar::bClicked(bool i_checked) // کدهای دکمه اعداد تاریخ
+void JCalendar::bClicked(bool i_checked)
 {
-    if( !i_checked )
-    {
-        m_b[ m_currentB ]->blockSignals( true );
-        m_b[ m_currentB ]->setChecked( true );
-        m_b[ m_currentB ]->blockSignals( false );
-    }else
-    {
-        m_b[ m_currentB ]->blockSignals( true );
-        m_b[ m_currentB ]->setChecked( false );
-        m_b[ m_currentB ]->blockSignals( false );
+    // Find which button was clicked
+    int clickedButton = -1;
+    for (int i = 0; i < 42; ++i) {
+        if (m_b[i] == sender()) {
+            clickedButton = i;
+            break;
+        }
+    }
 
-        for( int i=0; i<42; ++i )
-        {
-            if( m_b[ i ]->isChecked() )
-            {
-                m_currentB = i;
-                m_currentDate.Day = m_day[ i ];
-                m_ui->TextDate->blockSignals( true );
-                m_ui->TextDate->setText(toPersianNumbers( m_currentDate.toString()) );
-                m_ui->TextDate->blockSignals( false );
-                emit dateChanged( m_currentDate.toString() );
+    if (clickedButton == -1 || !m_b[clickedButton]->isEnabled()) {
+        return;
+    }
+
+    if (mRangeSelectionMode) {
+        // Range selection mode
+        if (!mFirstDateSelected) {
+            // First date selection
+            clearSelection();
+            m_b[clickedButton]->setChecked(true);
+            mStartButtonIndex = clickedButton;
+            mFirstDateSelected = true;
+
+            Date date = m_currentDate;
+            date.Day = m_day[clickedButton];
+            m_startDate = date;
+
+        } else {
+            // Second date selection
+            mEndButtonIndex = clickedButton;
+
+            Date date = m_currentDate;
+            date.Day = m_day[clickedButton];
+            m_endDate = date;
+
+            // Ensure start date is before end date
+            if (mStartButtonIndex > mEndButtonIndex) {
+                qSwap(mStartButtonIndex, mEndButtonIndex);
+                qSwap(m_startDate, m_endDate);
+            }
+
+            // Update visual selection for range
+            clearSelection();
+            for (int i = mStartButtonIndex; i <= mEndButtonIndex; ++i) {
+                if (m_b[i]->isEnabled()) {
+                    m_b[i]->setChecked(true);
+                }
+            }
+
+            emit dateRangeChanged(m_startDate.toString(), m_endDate.toString());
+            mFirstDateSelected = false;
+        }
+    } else {
+        // Single day selection mode (original behavior)
+        if (!i_checked) {
+            m_b[m_currentB]->blockSignals(true);
+            m_b[m_currentB]->setChecked(true);
+            m_b[m_currentB]->blockSignals(false);
+        } else {
+            m_b[m_currentB]->blockSignals(true);
+            m_b[m_currentB]->setChecked(false);
+            m_b[m_currentB]->blockSignals(false);
+
+            for (int i = 0; i < 42; ++i) {
+                if (m_b[i]->isChecked()) {
+                    m_currentB = i;
+                    m_currentDate.Day = m_day[i];
+                    m_ui->TextDate->blockSignals(true);
+                    m_ui->TextDate->setText(toPersianNumbers(m_currentDate.toString()));
+                    m_ui->TextDate->blockSignals(false);
+                    emit dateChanged(m_currentDate.toString());
+                }
             }
         }
     }
@@ -557,7 +617,7 @@ QString toPersianNumber( int i_val ) // تبدیل به عدد فارسی
     return out;
 }
 
-void JCalendar::reDecorate() // تغییر فرمت
+void JCalendar::reDecorate()
 {
     Date d = m_currentDate;
     d.Day = 1;
@@ -568,65 +628,41 @@ void JCalendar::reDecorate() // تغییر فرمت
     m_b[ m_currentB ]->setChecked( false );
     m_b[ m_currentB ]->blockSignals( false );
 
-    // Hide all buttons first
-    for( int i = 0; i < 42; ++i )
+    // Hide buttons for days from previous month
+    for( int i=0; i<dayOfWeek; ++i )
     {
         m_b[ i ]->setVisible( false );
-        m_b[ i ]->setEnabled( false );
     }
 
-    // Show and populate only the current month's days
+    // Show and configure buttons for current month days
     int day = 1;
-    for( int i = dayOfWeek; i < dayCount + dayOfWeek; ++i )
+    for( int i = dayOfWeek; i< dayCount + dayOfWeek; ++i )
     {
         m_b[ i ]->setVisible( true );
         m_b[ i ]->setText( toPersianNumber( day ) );
         m_b[ i ]->setEnabled( true );
         m_b[ i ]->setFlat( false );
 
-        if( day == m_currentDate.Day )
+        if( day == m_currentDate.Day && !mRangeSelectionMode)
         {
             m_b[ i ]->blockSignals( true );
             m_b[ i ]->setChecked( true );
             m_b[ i ]->blockSignals( false );
             m_currentB = i;
         }
-        else
-        {
-            m_b[ i ]->blockSignals( true );
-            m_b[ i ]->setChecked( false );
-            m_b[ i ]->blockSignals( false );
-        }
-
         m_day[ i ] = day++;
     }
 
-    // Update week numbers (only for visible weeks)
-    int weekNumber = d.toQDate().weekNumber();
-    for( int i = 0; i < 6; ++i )
+    // Hide buttons for days from next month
+    for( int i = dayOfWeek + dayCount ; i<42; ++i )
     {
-        // Only show week numbers for rows that have visible days
-        int rowStart = i * 7;
-        bool hasVisibleDays = false;
-        for( int j = 0; j < 7; ++j )
-        {
-            if( m_b[ rowStart + j ]->isVisible() )
-            {
-                hasVisibleDays = true;
-                break;
-            }
-        }
-
-        if( hasVisibleDays )
-        {
-            m_w[ i ]->setText( toPersianNumber( weekNumber++ ) );
-            m_w[ i ]->setVisible( true );
-        }
-        else
-        {
-            m_w[ i ]->setVisible( false );
-        }
+        m_b[ i ]->setVisible( false );
     }
+
+    // Update week numbers
+    int weekNumber = d.toQDate().weekNumber();
+    for( int i=0; i<6; ++i )
+        m_w[ i ]->setText( toPersianNumber( weekNumber++ ) );
 }
 
 bool JCalendar::getCancelButtonClicked() const
@@ -722,4 +758,64 @@ void JCalendar::on_uAccept_PushButton_clicked() // کدهای دکمه accept
     mAcceptButtonClicked=true;
     dialog->close();
 }
+
+
+JCalendar::Date &JCalendar::getStartDate()
+{
+    return m_startDate;
+}
+
+JCalendar::Date &JCalendar::getEndDate()
+{
+    return m_endDate;
+}
+
+void JCalendar::on_uSelectDay_RadioButton_toggled(bool checked)
+{
+    if (checked) {
+        mRangeSelectionMode = false;
+        mFirstDateSelected = false;
+        mStartButtonIndex = -1;
+        mEndButtonIndex = -1;
+        clearSelection();
+        reDecorate();
+    }
+}
+
+void JCalendar::on_uSelectRange_RadioButton_toggled(bool checked)
+{
+    if (checked) {
+        mRangeSelectionMode = true;
+        mFirstDateSelected = false;
+        mStartButtonIndex = -1;
+        mEndButtonIndex = -1;
+        clearSelection();
+        reDecorate();
+    }
+}
+
+
+void JCalendar::clearSelection()
+{
+    for (int i = 0; i < 42; ++i) {
+        m_b[i]->blockSignals(true);
+        m_b[i]->setChecked(false);
+        m_b[i]->blockSignals(false);
+    }
+}
+
+bool JCalendar::isInRange(int buttonIndex)
+{
+    if (mStartButtonIndex == -1 || mEndButtonIndex == -1) {
+        return false;
+    }
+
+    int start = qMin(mStartButtonIndex, mEndButtonIndex);
+    int end = qMax(mStartButtonIndex, mEndButtonIndex);
+
+    return buttonIndex >= start && buttonIndex <= end;
+}
+
+
+
 
