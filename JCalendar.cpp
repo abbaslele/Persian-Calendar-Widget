@@ -563,34 +563,27 @@ void JCalendar::reDecorate() // تغییر فرمت
     d.Day = 1;
     int dayOfWeek = getDayOfWeek( d ) - 1;
     int dayCount = getDayCount( d.Year, d.Month );
-    int day;
 
     m_b[ m_currentB ]->blockSignals( true );
     m_b[ m_currentB ]->setChecked( false );
     m_b[ m_currentB ]->blockSignals( false );
 
-    int previousYear = d.Year;
-    int previousMonth = d.Month - 1;
-    if( previousMonth == 0 )
+    // Hide all buttons first
+    for( int i = 0; i < 42; ++i )
     {
-        previousYear--;
-        previousMonth = 12;
-    }
-    day = getDayCount( previousYear, previousMonth ) - dayOfWeek + 1;
-    for( int i=0; i<dayOfWeek; ++i )
-    {
-        m_b[ i ]->setText( toPersianNumber( day ) );
+        m_b[ i ]->setVisible( false );
         m_b[ i ]->setEnabled( false );
-        m_b[ i ]->setFlat( true );
-        m_day[ i ] = day++;
     }
 
-    day = 1;
-    for( int i = dayOfWeek; i< dayCount + dayOfWeek; ++i )
+    // Show and populate only the current month's days
+    int day = 1;
+    for( int i = dayOfWeek; i < dayCount + dayOfWeek; ++i )
     {
+        m_b[ i ]->setVisible( true );
         m_b[ i ]->setText( toPersianNumber( day ) );
         m_b[ i ]->setEnabled( true );
         m_b[ i ]->setFlat( false );
+
         if( day == m_currentDate.Day )
         {
             m_b[ i ]->blockSignals( true );
@@ -598,21 +591,42 @@ void JCalendar::reDecorate() // تغییر فرمت
             m_b[ i ]->blockSignals( false );
             m_currentB = i;
         }
+        else
+        {
+            m_b[ i ]->blockSignals( true );
+            m_b[ i ]->setChecked( false );
+            m_b[ i ]->blockSignals( false );
+        }
+
         m_day[ i ] = day++;
     }
 
-    day = 1;
-    for( int i = dayOfWeek + dayCount ; i<42; ++i )
-    {
-        m_b[ i ]->setText( toPersianNumber( day ) );
-        m_b[ i ]->setEnabled( false );
-        m_b[ i ]->setFlat( true );
-        m_day[ i ] = day++;
-    }
-
+    // Update week numbers (only for visible weeks)
     int weekNumber = d.toQDate().weekNumber();
-    for( int i=0; i<6; ++i )
-        m_w[ i ]->setText( toPersianNumber( weekNumber++ ) );
+    for( int i = 0; i < 6; ++i )
+    {
+        // Only show week numbers for rows that have visible days
+        int rowStart = i * 7;
+        bool hasVisibleDays = false;
+        for( int j = 0; j < 7; ++j )
+        {
+            if( m_b[ rowStart + j ]->isVisible() )
+            {
+                hasVisibleDays = true;
+                break;
+            }
+        }
+
+        if( hasVisibleDays )
+        {
+            m_w[ i ]->setText( toPersianNumber( weekNumber++ ) );
+            m_w[ i ]->setVisible( true );
+        }
+        else
+        {
+            m_w[ i ]->setVisible( false );
+        }
+    }
 }
 
 bool JCalendar::getCancelButtonClicked() const
